@@ -216,7 +216,31 @@ const BBOX = [53.7890, -1.5640, 53.8070, -1.5260]; // S, W, N, E
 const LOCAL_KEY = "leedsOfficeMap.records.v1";
 const OSM_KEY = "leedsOfficeMap.osm.v3";
 const WHO_KEY = "leedsOfficeMap.who";
-const OVERPASS = ["https://overpass-api.de/api/interpreter","https://overpass.private.coffee/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+const OVERPASS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://lz4.overpass-api.de/api/interpreter",
+  "https://z.overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter"
+];
+async function overpass(query, what, onErr){
+  for (let i=0;i<OVERPASS.length;i++){
+    showOverlay(`Loading ${what} from OpenStreetMap…<br><small>Server ${i+1} of ${OVERPASS.length}. The first load can take a minute.</small>`);
+    try{
+      const ctrl=new AbortController(), timer=setTimeout(()=>ctrl.abort(), 90000);
+      const res=await fetch(OVERPASS[i],{method:"POST",body:"data="+encodeURIComponent(query),
+        headers:{"Content-Type":"application/x-www-form-urlencoded"},signal:ctrl.signal});
+      clearTimeout(timer);
+      if (!res.ok) throw new Error(res.status===429?"too many requests right now":res.status===504?"the server was too busy":"server error "+res.status);
+      const json=await res.json();
+      if (!json || !Array.isArray(json.elements)) throw new Error("unexpected reply");
+      if (json.remark && /runtime error|timed out/i.test(json.remark) && !json.elements.length) throw new Error("the server ran out of time");
+      return json;
+    }catch(e){ onErr(e.name==="AbortError"?new Error("the server took too long to respond"):(e instanceof TypeError?new Error("couldn’t reach the server"):e)); }
+  }
+  return null;
+}
 
 const STATUSES = [
   ["none","Not looked at","#b2b2b3"],
@@ -313,32 +337,27 @@ async function loadOSM(force){
       if (c && Date.now()-c.t < 30*864e5 && c.b){ buildings=c.b; streets=c.s||[]; water=c.w||[]; rail=c.r||[]; return; }
     }catch(e){}
   }
-  showOverlay("Loading Leeds city centre office buildings from OpenStreetMap…");
-  const q = `[out:json][timeout:90][bbox:${BBOX.join(",")}];
+  const head=`[out:json][timeout:120][bbox:${BBOX.join(",")}];`;
+  const qBuildings = head+`
 (way["building"~"^(office|commercial)$"];relation["building"~"^(office|commercial)$"];way["building"]["office"];);
 out body geom;
 node["office"];
-out body;
+out body;`;
+  const qContext = head+`
 way["highway"~"^(motorway|motorway_link|trunk|trunk_link|primary|secondary|tertiary|unclassified|residential|living_street|pedestrian)$"];
 out body geom;
 way["waterway"~"^(river|canal)$"];
 out body geom;
 way["railway"="rail"]["service"!~"."];
 out body geom;`;
-  let data=null, lastErr=null;
-  for (const url of OVERPASS){
-    try{
-      const ctrl = new AbortController(); const timer = setTimeout(()=>ctrl.abort(), 45000);
-      const res = await fetch(url,{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"},signal:ctrl.signal});
-      clearTimeout(timer);
-      if (!res.ok) throw new Error("HTTP "+res.status);
-      data = await res.json(); break;
-    }catch(e){ lastErr = e.name==="AbortError" ? new Error("the server took too long to respond") : e; }
-  }
-  if (!data){
-    showOverlay(`Couldn’t load buildings from OpenStreetMap (${esc(lastErr&&lastErr.message)}). The service is sometimes busy; try again in a minute. You can still add buildings by hand.`, true);
+  let lastErr=null;
+  const b = await overpass(qBuildings, "office buildings", e=>lastErr=e);
+  if (!b){
+    showOverlay(`Couldn’t load the buildings from OpenStreetMap (${esc(lastErr&&lastErr.message)}). Its free servers are sometimes busy; try again in a few minutes. You can still add buildings by hand.`, true);
     return;
   }
+  const c = await overpass(qContext, "streets, river and railway", ()=>{});
+  const data = { elements: [...b.elements, ...((c&&c.elements)||[])] };
   const out={}, nodes=[], st=[], wa=[], ra=[];
   const pts = g => g.map(p=>[+p.lat.toFixed(5),+p.lon.toFixed(5)]);
   for (const el of data.elements){
