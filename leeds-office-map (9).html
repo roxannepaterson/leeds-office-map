@@ -1,0 +1,758 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Leeds CC Office Map | Anchorpoint BD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!-- Firebase (only used if FIREBASE_CONFIG below is filled in) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+:root{
+  --vulcan:#101820; --white:#fff; --silver:#b2b2b3; --rock:#a7c5ee; --deluge:#715091;
+  --purple:#573d82; --apricot:#ff9e6d; --sunset:#eb6954; --plum:#923b7f;
+  --bg:#f6f6f8; --panel:#ffffff; --ink:#101820; --muted:#5d6168; --line:#e2e2e6; --field:#fafafb;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#0c1218; --panel:#151d26; --ink:#eef0f3; --muted:#9aa1ab; --line:#28323d; --field:#1b2530; color-scheme:dark; }
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:Jost,"Segoe UI",Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.45;
+  display:grid;grid-template-rows:auto 1fr;padding-top:env(safe-area-inset-top,0px)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--deluge);outline-offset:2px}
+
+/* Header */
+header{background:var(--vulcan);color:#fff;display:flex;align-items:center;gap:16px;padding:10px 18px;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:10px;margin-right:auto}
+.brand h1{font-size:22px;font-weight:500;margin:0;letter-spacing:.01em}
+.brand span{font-weight:300;color:var(--rock);font-size:14px}
+.swirl{width:22px;height:22px;border-radius:50%;background:conic-gradient(var(--rock),var(--deluge),var(--plum),var(--sunset),var(--apricot),var(--rock));align-self:center}
+.sync{font-size:13px;color:var(--silver);display:flex;align-items:center;gap:6px}
+.sync i{width:8px;height:8px;border-radius:50%;background:var(--silver);display:inline-block}
+.sync.shared i{background:#6fd3a0}.sync.err i{background:var(--sunset)}
+.who{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--silver)}
+.who input{background:#1d2731;border:1px solid #2d3945;border-radius:6px;padding:5px 8px;width:130px;color:#fff}
+.hbtn{background:transparent;border:1px solid #3a4652;color:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:14px}
+.hbtn:hover{border-color:var(--rock)}
+.hbtn.primary{background:var(--apricot);border-color:var(--apricot);color:var(--vulcan);font-weight:500}
+.hbtn.primary.on{background:var(--sunset);border-color:var(--sunset);color:#fff}
+.menu{position:relative}
+.menu-list{position:absolute;right:0;top:calc(100% + 6px);background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px;min-width:210px;z-index:2000;display:none;box-shadow:0 8px 24px rgba(16,24,32,.18)}
+.menu-list.open{display:block}
+.menu-list button{display:block;width:100%;text-align:left;background:none;border:0;padding:8px 10px;border-radius:6px;cursor:pointer}
+.menu-list button:hover{background:var(--field)}
+
+/* Layout */
+main{display:grid;grid-template-columns:390px 1fr;min-height:0}
+aside{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+#map{min-height:0;background:#f1f1f3}
+.view{display:flex;flex-direction:column;min-height:0;flex:1}
+.view[hidden]{display:none}
+
+/* List view */
+.filters{padding:14px 16px 10px;border-bottom:1px solid var(--line);display:grid;gap:10px}
+.search{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--field)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:3px 10px 3px 8px;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.chip .dot{width:9px;height:9px;border-radius:50%}
+.chip[aria-pressed="true"]{background:var(--vulcan);color:#fff;border-color:var(--vulcan)}
+@media (prefers-color-scheme: dark){.chip[aria-pressed="true"]{background:var(--rock);color:var(--vulcan);border-color:var(--rock)}}
+.toggles{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--muted)}
+.toggles label{display:flex;align-items:center;gap:5px;cursor:pointer}
+.count{font-size:13px;color:var(--muted);padding:8px 16px;border-bottom:1px solid var(--line)}
+.list{overflow:auto;flex:1;padding:4px 0}
+.item{display:grid;grid-template-columns:12px 1fr auto;gap:10px;align-items:start;padding:9px 16px;cursor:pointer;border:0;background:none;width:100%;text-align:left}
+.item:hover{background:var(--field)}
+.item .sw{width:12px;height:12px;border-radius:3px;margin-top:5px}
+.item b{font-weight:500;display:block}
+.item small{color:var(--muted);font-size:13px;display:block}
+.lease{font-size:12px;background:color-mix(in srgb,var(--sunset) 16%,transparent);color:var(--sunset);border-radius:4px;padding:1px 6px;white-space:nowrap;margin-top:3px}
+.empty{padding:24px 16px;color:var(--muted)}
+
+/* Detail view */
+.dhead{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+.back{background:none;border:0;cursor:pointer;color:var(--deluge);font-weight:500;padding:4px 0}
+@media (prefers-color-scheme: dark){.back{color:var(--rock)}}
+.dbody{overflow:auto;padding:16px;display:grid;gap:16px;flex:1;align-content:start}
+.title-input{font-size:22px;font-weight:500;border:0;border-bottom:1px solid transparent;background:none;padding:2px 0;width:100%}
+.title-input:hover,.title-input:focus{border-bottom-color:var(--line);outline:none}
+.field{display:grid;gap:4px}
+.field label,.sect{font-size:13px;color:var(--muted)}
+.sect{font-weight:500;color:var(--ink);font-size:15px;margin-top:4px}
+.field input,.field textarea,.occ input,.occ textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--field)}
+textarea{resize:vertical;min-height:70px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.status{display:flex;flex-wrap:wrap;gap:6px}
+.status label{cursor:pointer}
+.status input{position:absolute;opacity:0;pointer-events:none}
+.status span{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:7px;padding:5px 10px;font-size:13px}
+.status input:checked + span{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.status input:focus-visible + span{outline:2px solid var(--deluge);outline-offset:2px}
+.occs{display:grid;gap:10px}
+.occ{border:1px solid var(--line);border-left:4px solid var(--apricot);border-radius:8px;padding:10px;display:grid;gap:8px}
+.occ .top{display:grid;grid-template-columns:1fr auto;gap:8px}
+.occ .meta3{display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:8px}
+.occ small{font-size:12px;color:var(--muted)}
+.rm{background:none;border:0;color:var(--muted);cursor:pointer;font-size:13px}
+.rm:hover{color:var(--sunset)}
+.add{border:1px dashed var(--silver);background:none;border-radius:8px;padding:9px;cursor:pointer;color:var(--muted)}
+.add:hover{border-color:var(--deluge);color:var(--ink)}
+.hints{background:var(--field);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--muted)}
+.hints ul{list-style:none;padding:0;margin:6px 0 0;display:grid;gap:4px}
+.hints li{display:flex;justify-content:space-between;gap:8px;align-items:center;color:var(--ink)}
+.hints button{background:none;border:1px solid var(--line);border-radius:6px;font-size:12px;padding:2px 8px;cursor:pointer}
+.metaline{font-size:12px;color:var(--muted)}
+.occ.known{border-left-color:#2e9e5b}
+.progress{font-size:14px;color:var(--muted);display:flex;gap:8px;align-items:flex-start}
+.tickdot{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#2e9e5b;color:#fff;font-size:12px;font-weight:700;flex:none;line-height:1}
+.tickdot.onmap{position:absolute;transform:translate(-50%,-50%);width:22px;height:22px;border:2px solid #fff;box-shadow:0 1px 4px rgba(16,24,32,.35);text-shadow:none}
+.needs{font-size:12px;background:color-mix(in srgb,var(--apricot) 22%,transparent);color:#b4541f;border-radius:4px;padding:1px 6px;white-space:nowrap;margin-top:3px}
+.legend .tickdot{width:15px;height:15px;font-size:9px}
+.done{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer;font-weight:500}
+.done input{width:18px;height:18px;accent-color:#2e9e5b;margin:0}
+.done:has(input:checked){border-color:#2e9e5b;background:color-mix(in srgb,#2e9e5b 10%,transparent)}
+.subaddr{color:var(--muted);font-size:14px;margin-top:-10px}
+.danger{background:none;border:0;color:var(--sunset);cursor:pointer;padding:0;font-size:13px;justify-self:start}
+
+/* Map extras */
+.legend{background:var(--panel);color:var(--ink);padding:8px 12px;border-radius:8px;font:13px Jost,sans-serif;box-shadow:0 2px 10px rgba(16,24,32,.15);display:grid;gap:3px}
+.legend div{display:flex;align-items:center;gap:7px}
+.legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+.overlay{position:absolute;inset:0;display:grid;place-items:center;z-index:1000;pointer-events:none}
+.overlay .box{background:var(--panel);color:var(--ink);padding:16px 20px;border-radius:10px;box-shadow:0 6px 24px rgba(16,24,32,.2);max-width:340px;text-align:center;pointer-events:auto}
+.overlay .box button{margin-top:10px}
+.mapwrap{position:relative;min-height:0;display:grid}
+.mapwrap.adding #map{cursor:crosshair}
+.addhint{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:1000;background:var(--vulcan);color:#fff;padding:7px 14px;border-radius:999px;font-size:14px}
+.leaflet-tooltip{font-family:Jost,sans-serif;font-size:13px}
+.maplabel{background:none;border:0}
+.maplabel span{position:absolute;white-space:nowrap;font-family:Jost,sans-serif;pointer-events:none;
+  text-shadow:0 0 2px #fff,0 0 3px #fff,0 0 4px #fff,0 0 6px #fff}
+.lbl-street{font-size:11px;color:#5d6168;font-weight:400}
+.lbl-street.major{font-size:12.5px;color:#3a3f46;font-weight:500}
+.lbl-water{font-size:13px;color:#3f74b8;font-style:italic;font-weight:500;letter-spacing:.06em}
+.lbl-district{font-size:17px;color:#715091;font-weight:500;letter-spacing:.08em;opacity:.85}
+.lbl-landmark{font-size:12.5px;color:#101820;font-weight:500;display:flex;align-items:center;gap:5px;transform:translate(-5px,-50%)}
+.lbl-landmark i{width:8px;height:8px;border-radius:50%;background:#101820;border:2px solid #fff;flex:none}
+.leaflet-tile-pane{filter:grayscale(.6) brightness(1.02)}
+
+@media (max-width:760px){
+  main{grid-template-columns:1fr;grid-template-rows:52vh auto}
+  .mapwrap{order:-1}
+  aside{border-right:0;border-top:1px solid var(--line);min-height:48vh}
+  .who input{width:100px}
+}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><div class="swirl" aria-hidden="true"></div><h1>Leeds CC Office Map</h1><span>Anchorpoint BD</span></div>
+  <div class="sync" id="sync"><i></i><span>Starting…</span></div>
+  <label class="who">Editing as <input id="who" placeholder="Your name"></label>
+  <button class="hbtn primary" id="addBtn">Add a building</button>
+  <div class="menu">
+    <button class="hbtn" id="moreBtn" aria-haspopup="true" aria-expanded="false">Export</button>
+    <div class="menu-list" id="moreMenu">
+      <button data-act="csv">Download CSV (for Excel)</button>
+      <button data-act="json">Download backup (.json)</button>
+      <button data-act="import">Restore from backup…</button>
+      <button data-act="reload">Refresh buildings from OpenStreetMap</button>
+    </div>
+  </div>
+  <input type="file" id="importFile" accept=".json,application/json" hidden>
+</header>
+
+<main>
+  <aside>
+    <section class="view" id="listView">
+      <div class="filters">
+        <input class="search" id="q" type="search" placeholder="Search buildings or occupiers">
+        <div class="toggles">
+          <label><input type="checkbox" id="fNotes"> Occupiers recorded</label>
+          <label><input type="checkbox" id="fTodo"> Still to finish</label>
+          <label><input type="checkbox" id="fOffice"> Office-tagged only</label>
+        </div>
+      </div>
+      <div class="count" id="count"></div>
+      <div class="list" id="list"></div>
+    </section>
+    <section class="view" id="detailView" hidden>
+      <div class="dhead"><button class="back" id="backBtn">‹ All buildings</button></div>
+      <div class="dbody" id="detail"></div>
+    </section>
+  </aside>
+  <div class="mapwrap" id="mapwrap">
+    <div id="map"></div>
+    <div class="overlay" id="overlay" hidden><div class="box" id="overlayBox"></div></div>
+  </div>
+</main>
+
+<script>
+/* ------------------------------------------------------------------
+   SHARED STORAGE
+   Leave apiKey empty to save notes on this device only.
+   To share with the team, paste the config from the Firebase console
+   (Project settings > Your apps) for bd-tools-73705, as in the other
+   hub tools. Data lives under /leedsOfficeMap/buildings.
+------------------------------------------------------------------- */
+const FIREBASE_CONFIG = {
+  apiKey: "",
+  authDomain: "bd-tools-73705.firebaseapp.com",
+  databaseURL: "",
+  projectId: "bd-tools-73705",
+};
+const DB_PATH = "leedsOfficeMap";
+
+/* Leeds city centre, roughly inside the inner ring road */
+const BBOX = [53.7890, -1.5640, 53.8070, -1.5260]; // S, W, N, E
+const LOCAL_KEY = "leedsOfficeMap.records.v1";
+const OSM_KEY = "leedsOfficeMap.osm.v3";
+const WHO_KEY = "leedsOfficeMap.who";
+const OVERPASS = ["https://overpass-api.de/api/interpreter","https://overpass.private.coffee/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+
+const STATUSES = [
+  ["none","Not looked at","#b2b2b3"],
+  ["researched","Researched","#a7c5ee"],
+  ["target","Target","#ff9e6d"],
+  ["opportunity","Live opportunity","#eb6954"],
+  ["client","Client","#573d82"],
+];
+const statusColour = s => (STATUSES.find(x=>x[0]===s)||STATUSES[0])[2];
+const statusRank = s => STATUSES.findIndex(x=>x[0]===s);
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+let buildings = {};   // from OpenStreetMap
+let records = {};     // your notes, keyed by building id
+let layers = {};
+let selectedId = null;
+let addMode = false;
+let filters = { q:"", notes:false, todo:false, office:false };
+const COL_HAS = "#573d82", COL_NONE = "#b2b2b3", COL_DONE = "#2e9e5b";
+const named = r => occ(r).filter(o=>(o.company||"").trim());
+const missingNotes = r => named(r).filter(o=>!(o.notes||"").trim()).length;
+const fullyDone = r => !!(r && r.complete && missingNotes(r)===0);
+const colourFor = r => (r && r.complete) ? COL_DONE : hasData(r) ? COL_HAS : COL_NONE;
+let saveTimer = null;
+
+/* ---------------- storage ---------------- */
+const Store = {
+  mode: "local",
+  init(onChange){
+    const c = FIREBASE_CONFIG;
+    if (c.apiKey && c.databaseURL && window.firebase){
+      try{
+        firebase.initializeApp(c);
+        this.ref = firebase.database().ref(DB_PATH + "/buildings");
+        this.mode = "firebase";
+        setSync("Connecting to shared notes…");
+        this.ref.on("value", snap => { records = snap.val() || {}; setSync("Shared with the team", "shared"); onChange(); },
+          err => setSync("Shared notes unavailable: " + err.message, "err"));
+        return;
+      }catch(e){ console.error(e); }
+    }
+    try{ records = JSON.parse(localStorage.getItem(LOCAL_KEY) || "{}"); }catch(e){ records = {}; }
+    setSync("Saved on this device only");
+    onChange();
+  },
+  persistLocal(){ try{ localStorage.setItem(LOCAL_KEY, JSON.stringify(records)); }catch(e){ setSync("Couldn’t save: browser storage is full or blocked", "err"); } },
+  save(id){
+    if (this.mode === "firebase") return this.ref.child(id).set(JSON.parse(JSON.stringify(records[id]))).catch(e=>setSync("Save failed: "+e.message,"err"));
+    this.persistLocal();
+  },
+  remove(id){
+    delete records[id];
+    if (this.mode === "firebase") return this.ref.child(id).remove();
+    this.persistLocal();
+  },
+  replaceAll(obj){
+    records = obj;
+    if (this.mode === "firebase") return this.ref.set(obj);
+    this.persistLocal(); refreshAll();
+  }
+};
+function setSync(text, cls){ const el=$("#sync"); el.className="sync "+(cls||""); el.querySelector("span").textContent=text; }
+
+/* ---------------- helpers ---------------- */
+const occ = r => { const o = r && r.occupiers; return !o ? [] : Array.isArray(o) ? o.filter(Boolean) : Object.values(o); };
+const hasData = r => !!r && (!!r.complete || occ(r).some(o=>(o.company||"").trim() || (o.notes||"").trim()));
+function monthsUntil(ym){ const [y,m]=ym.split("-").map(Number); const n=new Date(); return (y-n.getFullYear())*12 + (m-1-n.getMonth()); }
+const fmtMonth = ym => { const [y,m]=ym.split("-").map(Number); return new Date(y,m-1,1).toLocaleDateString("en-GB",{month:"short",year:"numeric"}); };
+function nextLease(r){ const l = occ(r).map(o=>o.leaseEnd).filter(x=>x && monthsUntil(x)>=0).sort(); return l[0]||null; }
+const leaseSoon = r => occ(r).some(o => o.leaseEnd && monthsUntil(o.leaseEnd)>=0 && monthsUntil(o.leaseEnd)<=24);
+function displayName(id){ const r=records[id]||{}, b=buildings[id]||{}; return (r.name||"").trim() || b.name || addrOf(id) || "Unnamed building"; }
+function addrOf(id){ const r=records[id]||{}, b=buildings[id]||{}; return (r.address||"").trim() || b.address || ""; }
+function allIds(){
+  const ids = new Set(Object.keys(buildings));
+  for (const [id,r] of Object.entries(records)) if (r && r.lat!=null) ids.add(id);
+  return [...ids];
+}
+function pointInRing(lat, lon, ring){
+  let inside=false;
+  for (let i=0,j=ring.length-1;i<ring.length;j=i++){
+    const [yi,xi]=ring[i],[yj,xj]=ring[j];
+    if (((yi>lat)!==(yj>lat)) && (lon < (xj-xi)*(lat-yi)/(yj-yi)+xi)) inside=!inside;
+  }
+  return inside;
+}
+
+/* ---------------- OpenStreetMap ---------------- */
+async function loadOSM(force){
+  if (!force){
+    try{
+      const c = JSON.parse(localStorage.getItem(OSM_KEY)||"null");
+      if (c && Date.now()-c.t < 30*864e5 && c.b){ buildings=c.b; streets=c.s||[]; water=c.w||[]; rail=c.r||[]; return; }
+    }catch(e){}
+  }
+  showOverlay("Loading Leeds city centre office buildings from OpenStreetMap…");
+  const q = `[out:json][timeout:90][bbox:${BBOX.join(",")}];
+(way["building"~"^(office|commercial)$"];relation["building"~"^(office|commercial)$"];way["building"]["office"];);
+out body geom;
+node["office"];
+out body;
+way["highway"~"^(motorway|motorway_link|trunk|trunk_link|primary|secondary|tertiary|unclassified|residential|living_street|pedestrian)$"];
+out body geom;
+way["waterway"~"^(river|canal)$"];
+out body geom;
+way["railway"="rail"]["service"!~"."];
+out body geom;`;
+  let data=null, lastErr=null;
+  for (const url of OVERPASS){
+    try{
+      const ctrl = new AbortController(); const timer = setTimeout(()=>ctrl.abort(), 45000);
+      const res = await fetch(url,{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"},signal:ctrl.signal});
+      clearTimeout(timer);
+      if (!res.ok) throw new Error("HTTP "+res.status);
+      data = await res.json(); break;
+    }catch(e){ lastErr = e.name==="AbortError" ? new Error("the server took too long to respond") : e; }
+  }
+  if (!data){
+    showOverlay(`Couldn’t load buildings from OpenStreetMap (${esc(lastErr&&lastErr.message)}). The service is sometimes busy; try again in a minute. You can still add buildings by hand.`, true);
+    return;
+  }
+  const out={}, nodes=[], st=[], wa=[], ra=[];
+  const pts = g => g.map(p=>[+p.lat.toFixed(5),+p.lon.toFixed(5)]);
+  for (const el of data.elements){
+    if (el.type==="node"){ if (el.tags && el.tags.name) nodes.push(el); continue; }
+    if (el.type==="way" && el.tags && el.tags.waterway){ if (el.geometry) wa.push({ n:el.tags.name||"", g:pts(el.geometry) }); continue; }
+    if (el.type==="way" && el.tags && el.tags.railway){ if (el.geometry) ra.push({ g:pts(el.geometry) }); continue; }
+    if (el.type==="way" && el.tags && el.tags.highway){
+      if (el.geometry) st.push({ n:el.tags.name||"", h:el.tags.highway, g:el.geometry.map(p=>[+p.lat.toFixed(5),+p.lon.toFixed(5)]) });
+      continue;
+    }
+    let rings=[];
+    if (el.type==="way" && el.geometry) rings=[el.geometry.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6)])];
+    if (el.type==="relation" && el.members) rings=el.members.filter(m=>m.role==="outer"&&m.geometry).map(m=>m.geometry.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6)]));
+    if (!rings.length) continue;
+    const t=el.tags||{}, id=el.type+"_"+el.id, r0=rings[0];
+    const center=[r0.reduce((a,p)=>a+p[0],0)/r0.length, r0.reduce((a,p)=>a+p[1],0)/r0.length];
+    const address=[[t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" "), t["addr:postcode"]].filter(Boolean).join(", ");
+    out[id]={ id, rings, center:[+center[0].toFixed(6),+center[1].toFixed(6)],
+      kind:(t.building==="office"||t.office)?"office":"commercial",
+      name:t.name||t["addr:housename"]||"", address, osm:[] };
+    if (t.office && t.name) out[id].osm.push(t.name);
+  }
+  for (const n of nodes){
+    for (const b of Object.values(out)){
+      if (b.rings.some(r=>pointInRing(n.lat,n.lon,r))){ if(!b.osm.includes(n.tags.name)) b.osm.push(n.tags.name); break; }
+    }
+  }
+  buildings=out; streets=st; water=wa; rail=ra;
+  try{ localStorage.setItem(OSM_KEY, JSON.stringify({t:Date.now(), b:out, s:st, w:wa, r:ra})); }catch(e){}
+  hideOverlay();
+}
+function showOverlay(html, retry){
+  $("#overlay").hidden=false;
+  $("#overlayBox").innerHTML = html + (retry?`<br><button class="hbtn primary" id="retryBtn">Try again</button>`:"");
+  if (retry) $("#retryBtn").onclick=async()=>{ await loadOSM(true); buildLayers(); refreshAll(); };
+}
+function hideOverlay(){ $("#overlay").hidden=true; }
+
+/* ---------------- map ---------------- */
+const map = L.map("map",{zoomControl:true, minZoom:13, maxZoom:19}).setView([53.7978,-1.5450],16);
+/* Background map: tries each provider in turn; if all are blocked,
+   the streets drawn from the OpenStreetMap download still show. */
+const TILE_PROVIDERS = [
+  ["https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", "Basemap &copy; Esri", 16],
+  ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", "Basemap &copy; Esri", 19],
+];
+const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+let tileIdx = 0, tileErrors = 0, tileLayer = null;
+function useTiles(i){
+  if (tileLayer) tileLayer.remove();
+  tileErrors = 0; tileIdx = i;
+  if (i >= TILE_PROVIDERS.length){ tileLayer = null; map.attributionControl.addAttribution(OSM_ATTR); return; }
+  const [url, attr, nativeZoom] = TILE_PROVIDERS[i];
+  /* Only show the background at zoom levels the provider supports properly; closer in,
+     the crisp streets, river and buildings drawn from OpenStreetMap take over instead of a stretched, blurry image. */
+  tileLayer = L.tileLayer(url, { maxZoom:nativeZoom, attribution: attr + " | " + OSM_ATTR });
+  tileLayer.on("tileerror", ()=>{ if (++tileErrors === 6) useTiles(tileIdx + 1); });
+  tileLayer.on("tileload", ()=>{ tileErrors = 0; });
+  tileLayer.addTo(map);
+}
+useTiles(0);
+map.createPane("streets"); map.getPane("streets").style.zIndex = 350;
+map.createPane("labels"); map.getPane("labels").style.zIndex = 450; map.getPane("labels").style.pointerEvents = "none";
+let streets = [], water = [], rail = [], baseLayer = null, labelGroups = {};
+const STREET_W = { motorway:8, motorway_link:5, trunk:7, trunk_link:4, primary:5.5, secondary:5, tertiary:4, unclassified:3, residential:3, living_street:2.5, pedestrian:3 };
+const MAJOR = new Set(["motorway","trunk","primary","secondary"]);
+
+/* Approximate positions of city centre areas and landmarks, for orientation */
+const DISTRICTS = [
+  ["Financial Quarter",53.7988,-1.5525],["Civic Quarter",53.8018,-1.5470],["Retail core",53.7972,-1.5418],
+  ["Arena Quarter",53.8042,-1.5425],["West End",53.7972,-1.5600],["Holbeck",53.7898,-1.5545],
+  ["South Bank",53.7915,-1.5440],["The Calls",53.7952,-1.5368],["Leeds Dock",53.7912,-1.5325],
+  ["Quarry Hill",53.7985,-1.5320],["Mabgate",53.8022,-1.5335],["Little Woodhouse",53.8035,-1.5610]
+];
+const LANDMARKS = [
+  ["Leeds station",53.7952,-1.5474],["Trinity Leeds",53.7962,-1.5443],["Victoria Gate",53.7987,-1.5378],
+  ["Kirkgate Market",53.7974,-1.5398],["Town Hall",53.7999,-1.5494],["Civic Hall",53.8022,-1.5483],
+  ["First Direct Arena",53.8037,-1.5412],["Granary Wharf",53.7937,-1.5497],["Wellington Place",53.7963,-1.5585],
+  ["Park Square",53.7987,-1.5547],["Leeds General Infirmary",53.8028,-1.5525],["Corn Exchange",53.7960,-1.5402],
+  ["Leeds Playhouse",53.7980,-1.5335],["Royal Armouries",53.7920,-1.5320],["Merrion Centre",53.8020,-1.5440],
+  ["Bus station",53.7963,-1.5360],["Leeds Beckett (City)",53.8045,-1.5490]
+];
+
+function lineLength(g){ let d=0; for(let i=1;i<g.length;i++) d+=Math.hypot(g[i][0]-g[i-1][0],(g[i][1]-g[i-1][1])*0.59); return d; }
+function midAndAngle(g){
+  const total=lineLength(g); let acc=0;
+  for(let i=1;i<g.length;i++){
+    const seg=Math.hypot(g[i][0]-g[i-1][0],(g[i][1]-g[i-1][1])*0.59);
+    if(acc+seg>=total/2){
+      const t=seg?(total/2-acc)/seg:0, lat=g[i-1][0]+(g[i][0]-g[i-1][0])*t, lon=g[i-1][1]+(g[i][1]-g[i-1][1])*t;
+      let a=-Math.atan2(g[i][0]-g[i-1][0],(g[i][1]-g[i-1][1])*0.59)*180/Math.PI;
+      if(a>90) a-=180; if(a<-90) a+=180;
+      return [[lat,lon],a];
+    }
+    acc+=seg;
+  }
+  return [g[0],0];
+}
+const textIcon = (cls, text, angle=0) => L.divIcon({ className:"maplabel", iconSize:[0,0],
+  html:`<span class="${cls}" style="transform:translate(-50%,-50%) rotate(${angle.toFixed(1)}deg)">${esc(text)}</span>` });
+
+function drawStreets(){
+  if (baseLayer) baseLayer.remove();
+  Object.values(labelGroups).forEach(g=>g.remove());
+  const lines=[];
+  water.forEach(w=>lines.push(L.polyline(w.g,{pane:"streets",color:"#7fa9e0",weight:w.n&&/aire/i.test(w.n)?9:6,opacity:0.75,interactive:false,lineCap:"round",lineJoin:"round"})));
+  rail.forEach(r=>{
+    lines.push(L.polyline(r.g,{pane:"streets",color:"#6b7078",weight:3.5,opacity:0.6,interactive:false}));
+    lines.push(L.polyline(r.g,{pane:"streets",color:"#ffffff",weight:1.5,opacity:0.9,dashArray:"6 6",interactive:false}));
+  });
+  streets.forEach(st=>{
+    const ring = st.h.startsWith("motorway") || st.h.startsWith("trunk");
+    lines.push(L.polyline(st.g,{pane:"streets",color: ring?"#f0a77e":(MAJOR.has(st.h)?"#9aa0a8":"#b9bdc3"),
+      weight:STREET_W[st.h]||3, opacity: ring?0.7:(MAJOR.has(st.h)?0.6:0.45), interactive:false, lineCap:"round", lineJoin:"round"}));
+  });
+  baseLayer=L.layerGroup(lines).addTo(map);
+
+  // street names: one label per street, on its longest piece
+  const best={};
+  streets.forEach(st=>{ if(!st.n) return; const len=lineLength(st.g); if(!best[st.n]||len>best[st.n].len) best[st.n]={len,st}; });
+  const major=[], minor=[];
+  Object.values(best).forEach(({len,st})=>{
+    if (len<0.0012) return;
+    const [pos,a]=midAndAngle(st.g);
+    const isMajor = MAJOR.has(st.h) || st.h.startsWith("motorway") || st.h.startsWith("trunk");
+    (isMajor?major:minor).push(L.marker(pos,{pane:"labels",interactive:false,keyboard:false,icon:textIcon(isMajor?"lbl-street major":"lbl-street",st.n,a)}));
+  });
+  const waterNames={};
+  water.forEach(w=>{ if(w.n){ const len=lineLength(w.g); if(!waterNames[w.n]||len>waterNames[w.n].len) waterNames[w.n]={len,w}; } });
+  const waterLbls=Object.values(waterNames).map(({w})=>{ const [pos,a]=midAndAngle(w.g); return L.marker(pos,{pane:"labels",interactive:false,keyboard:false,icon:textIcon("lbl-water",w.n,a)}); });
+
+  labelGroups = {
+    districts: L.layerGroup(DISTRICTS.map(([n,la,lo])=>L.marker([la,lo],{pane:"labels",interactive:false,keyboard:false,icon:textIcon("lbl-district",n)}))),
+    landmarks: L.layerGroup(LANDMARKS.map(([n,la,lo])=>L.marker([la,lo],{pane:"labels",interactive:false,keyboard:false,
+      icon:L.divIcon({className:"maplabel",iconSize:[0,0],html:`<span class="lbl-landmark"><i></i>${esc(n)}</span>`})}))),
+    major: L.layerGroup(major), minor: L.layerGroup(minor), water: L.layerGroup(waterLbls)
+  };
+  updateLabels();
+}
+function updateLabels(){
+  const z=map.getZoom(), show={ districts:z>=14&&z<=17, landmarks:z>=15, major:z>=15, minor:z>=17, water:z>=14 };
+  for (const [k,g] of Object.entries(labelGroups)){ if(show[k]) g.addTo(map); else g.remove(); }
+}
+map.on("zoomend", updateLabels);
+
+const legend = L.control({position:"bottomleft"});
+legend.onAdd=()=>{ const d=L.DomUtil.create("div","legend"); d.innerHTML=`<div><span class="tickdot">✓</span>Fully complete</div><div><i style="background:${COL_DONE}"></i>All occupiers added</div><div><i style="background:${COL_HAS}"></i>In progress</div><div><i style="background:${COL_NONE}"></i>Nothing recorded yet</div>`; return d; };
+legend.addTo(map);
+
+function matches(id){
+  const b=buildings[id]||{}, r=records[id]||{};
+  if (filters.office && b.kind==="commercial") return false;
+  if (filters.notes && !hasData(r)) return false;
+  if (filters.todo && fullyDone(r)) return false;
+  if (filters.q){
+    const hay=[displayName(id),addrOf(id),...occ(r).map(o=>(o.company||"")+" "+(o.notes||"")),...(b.osm||[])].join(" ").toLowerCase();
+    if (!hay.includes(filters.q)) return false;
+  }
+  return true;
+}
+function styleFor(id){
+  const has=hasData(records[id]), c=colourFor(records[id]), m=matches(id), sel=id===selectedId;
+  return { color: sel?"#101820":c, weight: sel?3:(has?1.5:1), opacity: m?0.95:0.15,
+           fillColor:c, fillOpacity: m?(has?0.55:0.2):0.04 };
+}
+function makeLayer(id){
+  const b=buildings[id], r=records[id];
+  let layer;
+  if (b) layer=L.polygon(b.rings, styleFor(id));
+  else if (r && r.lat!=null) layer=L.circleMarker([r.lat,r.lng],{radius:9,...styleFor(id)});
+  else return;
+  layer.on("click", e=>{ if(addMode) return; L.DomEvent.stopPropagation(e); select(id,false); });
+  layer.bindTooltip(()=>{ const n=occ(records[id]).filter(o=>o.company).length; return esc(displayName(id))+(n?`<br><small>${n} occupier${n>1?"s":""} recorded</small>`:""); },{sticky:true});
+  layer.addTo(map); layers[id]=layer;
+}
+function buildLayers(){
+  drawStreets();
+  for (const l of Object.values(layers)) l.remove();
+  layers={};
+  allIds().forEach(makeLayer);
+}
+let tickLayer=null;
+function drawTicks(){
+  if (tickLayer) tickLayer.remove();
+  const marks=[];
+  for (const id of allIds()){
+    const r=records[id]; if (!fullyDone(r) || !matches(id)) continue;
+    const b=buildings[id], pos=b?b.center:[r.lat,r.lng];
+    marks.push(L.marker(pos,{pane:"labels",interactive:false,keyboard:false,
+      icon:L.divIcon({className:"maplabel",iconSize:[0,0],html:`<span class="tickdot onmap">✓</span>`})}));
+  }
+  tickLayer=L.layerGroup(marks);
+  if (map.getZoom()>=15) tickLayer.addTo(map);
+}
+map.on("zoomend", ()=>{ if(!tickLayer) return; if(map.getZoom()>=15) tickLayer.addTo(map); else tickLayer.remove(); });
+function syncLayers(){
+  drawTicks();
+  const ids=new Set(allIds());
+  for (const id of Object.keys(layers)) if (!ids.has(id)){ layers[id].remove(); delete layers[id]; }
+  for (const id of ids) if (!layers[id]) makeLayer(id);
+  for (const [id,l] of Object.entries(layers)) l.setStyle(styleFor(id));
+  if (selectedId && layers[selectedId] && layers[selectedId].bringToFront) layers[selectedId].bringToFront();
+}
+
+map.on("click", e=>{
+  if (!addMode) return;
+  const id="custom_"+Date.now().toString(36);
+  records[id]={ custom:true, lat:+e.latlng.lat.toFixed(6), lng:+e.latlng.lng.toFixed(6), status:"none", name:"", occupiers:[], updatedAt:Date.now(), updatedBy:who() };
+  Store.save(id);
+  setAddMode(false);
+  makeLayer(id);
+  select(id,false);
+  setTimeout(()=>{ const t=$("#f_name"); t && t.focus(); },50);
+});
+function setAddMode(on){
+  addMode=on;
+  $("#addBtn").classList.toggle("on",on);
+  $("#addBtn").textContent=on?"Cancel":"Add a building";
+  $("#mapwrap").classList.toggle("adding",on);
+  const h=document.querySelector(".addhint");
+  if (on && !h){ const d=document.createElement("div"); d.className="addhint"; d.textContent="Click the map where the building is"; $("#mapwrap").appendChild(d); }
+  if (!on && h) h.remove();
+}
+
+/* ---------------- list ---------------- */
+function badge(r){
+  if (fullyDone(r)) return `<span class="tickdot" title="Fully complete">✓</span>`;
+  const m=missingNotes(r);
+  return m ? `<span class="needs">${m} need${m>1?"":"s"} notes</span>` : "<span></span>";
+}
+function renderList(){
+  const ids=allIds().filter(matches);
+  ids.sort((a,b)=>{
+    const d=(hasData(records[b])?1:0)-(hasData(records[a])?1:0); if(d) return d;
+    const na=displayName(a), nb=displayName(b), ua=na==="Unnamed building", ub=nb==="Unnamed building";
+    if (ua!==ub) return ua?1:-1;
+    return na.localeCompare(nb,"en-GB",{numeric:true});
+  });
+  const withNotes=allIds().filter(id=>hasData(records[id])).length, done=allIds().filter(id=>fullyDone(records[id])).length;
+  $("#count").textContent=`${ids.length} of ${allIds().length} buildings shown, ${withNotes} started, ${done} fully complete`;
+  if (!ids.length){ $("#list").innerHTML=`<div class="empty">No buildings match. Clear the search or a filter, or use “Add a building” to drop a pin for one that isn’t on the map.</div>`; return; }
+  $("#list").innerHTML=ids.slice(0,600).map(id=>{
+    const r=records[id]||{}, cos=occ(r).map(o=>o.company).filter(Boolean);
+    const sub = cos.length ? esc(cos.slice(0,3).join(", "))+(cos.length>3?` +${cos.length-3}`:"") : esc(addrOf(id) && displayName(id)!==addrOf(id) ? addrOf(id) : "");
+    return `<button class="item" data-id="${id}"><span class="sw" style="background:${colourFor(r)}"></span>
+      <span><b>${esc(displayName(id))}</b>${sub?`<small>${sub}</small>`:""}</span>${badge(r)}</button>`;
+  }).join("");
+}
+
+/* ---------------- detail ---------------- */
+const blankRec = () => ({ name:"", occupiers:[] });
+function select(id, zoom=true){
+  selectedId=id;
+  $("#listView").hidden=true; $("#detailView").hidden=false;
+  renderDetail(); syncLayers();
+  const l=layers[id];
+  if (zoom && l){ l.getBounds ? map.fitBounds(l.getBounds(),{maxZoom:18,padding:[60,60]}) : map.setView(l.getLatLng(),18); }
+}
+function closeDetail(){
+  selectedId=null; $("#detailView").hidden=true; $("#listView").hidden=false;
+  renderList(); syncLayers();
+}
+function renderDetail(){
+  const id=selectedId, b=buildings[id]||{}, r={...blankRec(), ...(records[id]||{})};
+  const occs=occ(r);
+  const hints=(b.osm||[]).filter(n=>!occs.some(o=>(o.company||"").toLowerCase()===n.toLowerCase()));
+  const address=addrOf(id);
+  $("#detail").innerHTML=`
+    <input class="title-input" id="f_name" value="${esc(r.name)}" placeholder="${esc(b.name||"Name this building")}" aria-label="Building">
+    ${address && address!==displayName(id)?`<div class="subaddr">${esc(address)}</div>`:""}
+    <div class="occs" id="occs">${occs.map((o,i)=>`
+      <div class="occ${(o.notes||"").trim()?" known":""}" data-i="${i}">
+        <div class="top"><input data-k="company" value="${esc(o.company)}" placeholder="Occupier" aria-label="Occupier"><button class="rm" data-act="rm-occ" data-i="${i}">Remove</button></div>
+        <textarea data-k="notes" rows="3" placeholder="What we know about them" aria-label="What we know">${esc(o.notes)}</textarea>
+      </div>`).join("")}
+    </div>
+    <button class="add" data-act="add-occ">Add an occupier</button>
+    <label class="done"><input type="checkbox" id="f_complete" ${r.complete?"checked":""}> All occupiers added</label>
+    ${hints.length?`<div class="hints">Listed at this address on OpenStreetMap (may be out of date):<ul>${hints.map(n=>`<li><span>${esc(n)}</span><button data-act="hint" data-name="${esc(n)}">Add as occupier</button></li>`).join("")}</ul></div>`:""}
+    <div class="progress" id="progress">${progressText(r)}</div>
+    <div class="metaline" id="metaline">${metaText(id)}</div>
+    ${records[id]?`<button class="danger" data-act="delete">${(records[id]||{}).custom||!buildings[id]?"Delete this building":"Clear everything recorded for this building"}</button>`:""}
+  `;
+}
+function progressText(r){
+  const n=named(r).length, m=missingNotes(r);
+  if (fullyDone(r)) return `<span class="tickdot">✓</span> Fully complete: everyone’s been added and we know the situation with each occupier.`;
+  const parts=[];
+  if (!r.complete) parts.push("Tick “All occupiers added” once everyone in the building is listed.");
+  if (m) parts.push(`${m} of ${n} occupier${n>1?"s":""} still need${m>1?"":"s"} “what we know” filling in.`);
+  return parts.join(" ");
+}
+function metaText(id){
+  const r=records[id];
+  if (!r || !r.updatedAt) return "Nothing recorded yet. Changes save as you type.";
+  return `Last updated ${new Date(r.updatedAt).toLocaleString("en-GB",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})}${r.updatedBy?" by "+esc(r.updatedBy):""}`;
+}
+function collect(){
+  const id=selectedId, b=buildings[id], prev=records[id]||{};
+  const rec={...blankRec(), ...prev};
+  rec.name=$("#f_name").value;
+  rec.complete=$("#f_complete").checked;
+  rec.occupiers=[...document.querySelectorAll("#occs .occ")].map((el,i)=>{
+    const o={...(occ(prev)[i]||{})}; el.querySelectorAll("[data-k]").forEach(inp=>o[inp.dataset.k]=inp.value); return o;
+  });
+  if (b){ rec.lat=b.center[0]; rec.lng=b.center[1]; rec.osmName=b.name||""; }
+  rec.updatedAt=Date.now(); rec.updatedBy=who();
+  records[id]=rec;
+  return id;
+}
+function commit(immediate){
+  const id=collect();
+  syncLayers();
+  $("#metaline").innerHTML=metaText(id);
+  $("#progress").innerHTML=progressText(records[id]);
+  document.querySelectorAll("#occs .occ").forEach(el=>el.classList.toggle("known", !!el.querySelector('[data-k="notes"]').value.trim()));
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>Store.save(id), immediate?0:500);
+}
+
+/* ---------------- refresh from storage ---------------- */
+function refreshAll(){
+  syncLayers();
+  if (selectedId){
+    if (!records[selectedId] && !buildings[selectedId]) return closeDetail();
+    const panel=$("#detail");
+    if (panel.contains(document.activeElement)) $("#metaline").innerHTML=metaText(selectedId);
+    else renderDetail();
+  } else renderList();
+}
+
+/* ---------------- export / import ---------------- */
+function download(name, text, type){
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([text],{type}));
+  a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },500);
+}
+function csv(){
+  const head=["Building","Address","All occupiers added","Fully complete","Occupier","What we know","Last updated","Updated by"];
+  const q=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+  const rows=[head];
+  for (const id of allIds()){
+    const r=records[id]; if (!hasData(r)) continue;
+    const when=r.updatedAt?new Date(r.updatedAt).toLocaleDateString("en-GB"):"";
+    const os=occ(r).filter(o=>(o.company||"").trim()||(o.notes||"").trim()), d=r.complete?"Yes":"No", f=fullyDone(r)?"Yes":"No";
+    if (!os.length) rows.push([displayName(id),addrOf(id),d,f,"","",when,r.updatedBy]);
+    os.forEach(o=>rows.push([displayName(id),addrOf(id),d,f,o.company,o.notes,when,r.updatedBy]));
+  }
+  download(`leeds-office-map-${new Date().toISOString().slice(0,10)}.csv`, "\ufeff"+rows.map(r=>r.map(q).join(",")).join("\r\n"), "text/csv");
+}
+
+/* ---------------- events ---------------- */
+function who(){ return $("#who").value.trim(); }
+$("#who").value=localStorage.getItem(WHO_KEY)||"";
+$("#who").addEventListener("input",()=>{ try{localStorage.setItem(WHO_KEY,who());}catch(e){} });
+
+$("#q").addEventListener("input", e=>{ filters.q=e.target.value.trim().toLowerCase(); renderList(); syncLayers(); });
+[["#fNotes","notes"],["#fTodo","todo"],["#fOffice","office"]].forEach(([s,k])=>$(s).addEventListener("change",e=>{ filters[k]=e.target.checked; renderList(); syncLayers(); }));
+$("#list").addEventListener("click", e=>{ const it=e.target.closest(".item"); if(it) select(it.dataset.id); });
+$("#backBtn").addEventListener("click", closeDetail);
+$("#addBtn").addEventListener("click", ()=>setAddMode(!addMode));
+document.addEventListener("keydown", e=>{ if(e.key==="Escape"){ if(addMode) setAddMode(false); else if(selectedId && !$("#detail").contains(document.activeElement)) closeDetail(); }});
+
+$("#detail").addEventListener("input", e=>{ if(e.target.matches("input,textarea")) commit(false); });
+$("#detail").addEventListener("click", e=>{
+  const btn=e.target.closest("[data-act]"); if(!btn) return;
+  const act=btn.dataset.act;
+  if (act==="add-occ" || act==="hint"){
+    collect();
+    records[selectedId].occupiers.push({company:act==="hint"?btn.dataset.name:"",notes:""});
+    Store.save(selectedId); renderDetail(); syncLayers();
+    const all=document.querySelectorAll('#occs .occ [data-k="company"]'); const last=all[all.length-1];
+    if (act==="add-occ" && last) last.focus();
+  }
+  if (act==="rm-occ"){
+    collect();
+    records[selectedId].occupiers.splice(+btn.dataset.i,1);
+    Store.save(selectedId); renderDetail(); syncLayers();
+  }
+  if (act==="delete"){
+    const custom=(records[selectedId]||{}).custom || !buildings[selectedId];
+    if (!confirm(custom?"Delete this building and everything recorded for it, for everyone?":"Clear everything recorded for this building, for everyone?")) return;
+    const id=selectedId; Store.remove(id);
+    if (custom){ layers[id] && layers[id].remove(); delete layers[id]; closeDetail(); }
+    else { renderDetail(); syncLayers(); }
+  }
+});
+
+$("#moreBtn").addEventListener("click", e=>{ e.stopPropagation(); const m=$("#moreMenu"); m.classList.toggle("open"); $("#moreBtn").setAttribute("aria-expanded",m.classList.contains("open")); });
+document.addEventListener("click", ()=>{ $("#moreMenu").classList.remove("open"); $("#moreBtn").setAttribute("aria-expanded","false"); });
+$("#moreMenu").addEventListener("click", async e=>{
+  const act=e.target.dataset.act;
+  if (act==="csv") csv();
+  if (act==="json") download(`leeds-office-map-backup-${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(records,null,2), "application/json");
+  if (act==="import") $("#importFile").click();
+  if (act==="reload"){ await loadOSM(true); buildLayers(); refreshAll(); }
+});
+$("#importFile").addEventListener("change", async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  try{
+    const obj=JSON.parse(await f.text());
+    if (typeof obj!=="object"||Array.isArray(obj)) throw new Error("Not a backup file");
+    if (confirm(`Restore ${Object.keys(obj).length} buildings from this backup? This replaces the current notes.`)) Store.replaceAll(obj);
+  }catch(err){ alert("That file couldn’t be read as a Leeds office map backup: "+err.message); }
+  e.target.value="";
+});
+
+/* ---------------- start ---------------- */
+(async function start(){
+  await loadOSM(false);
+  buildLayers();
+  Store.init(refreshAll);
+})();
+</script>
+</body>
+</html>
